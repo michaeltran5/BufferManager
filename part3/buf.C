@@ -1,3 +1,13 @@
+/**
+ * @file buf.C
+ * Author: Shrey Katyal
+ * ID: 9086052256
+ * Author: Hassan Murayr
+ * ID: 
+ * Author: Michael Tran
+ * ID: 
+ * Description: Implementation of the BufMgr class, and Minirel Buffer Management system
+ */
 #include <memory.h>
 #include <unistd.h>
 #include <errno.h>
@@ -88,9 +98,56 @@ const Status BufMgr::allocBuf(int &frame)
     return BUFFEREXCEEDED;
 }
 
-// Shrey
+
+/**
+ * Reads a page from the given file and puts it in the buffer pool.
+ * If the page is already in the buffer pool, it increments the pin count
+ * and sets the reference bit.  If the page is not in the buffer pool,
+ * it allocates a frame, reads the page into the frame, inserts the page
+ * in the buffer pool, and sets the pin count and reference bit.
+ *
+ * @param file The file from which to read the page.
+ * @param PageNo The number of the page to read.
+ * @param page A pointer to the page in the buffer pool.
+ * @return Returns OK if no errors occurred, UNIXERR if a Unix error occurred,
+ *  BUFFEREXCEEDED if all buffer frames are pinned, HASHTBLERROR if a hash 
+ *  table error occurred.
+ */
 const Status BufMgr::readPage(File *file, const int PageNo, Page *&page)
 {
+    int framePointer = 0;
+    Status pageStatus = hashTable->lookup(file, PageNo, framePointer);
+
+    if (pageStatus == OK)
+    {
+        BufDesc &currentFrame = bufTable[framePointer];
+        currentFrame.pinCnt++;
+        currentFrame.refbit = true;
+        page = &(bufPool[framePointer]);
+        return OK;
+    }
+    else if(pageStatus == HASHNOTFOUND)
+    {
+        Status allocStatus = allocBuf(framePointer);
+        if(allocStatus != OK)
+        {
+            return allocStatus;
+        }
+        Status readStatus = file->readPage(PageNo, &(bufPool[framePointer]));
+        if(readStatus != OK)
+        {
+            return readStatus;
+        }
+        Status insertStatus = hashTable->insert(file, PageNo, framePointer);
+        if(insertStatus != OK){
+            return insertStatus;
+        }
+        BufDesc &currentFrame = bufTable[framePointer];
+        currentFrame.Set(file, PageNo);
+        page = &(bufPool[framePointer]);
+        return OK;
+    }
+    return pageStatus;
 }
 
 // Michael
