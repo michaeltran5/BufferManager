@@ -3,7 +3,7 @@
  * Author: Shrey Katyal
  * ID: 9086052256
  * Author: Hassan Murayr
- * ID:
+ * ID: 9084721316
  * Author: Michael Tran
  * ID: 9083087123
  * Description: Implementation of the BufMgr class, and Minirel Buffer Management system
@@ -200,9 +200,34 @@ const Status BufMgr::readPage(File *file, const int PageNo, Page *&page)
     return PAGENOTPINNED;
 }
 
-// Hassan
-const Status BufMgr::allocPage(File *file, int &pageNo, Page *&page)
+/**
+ * Allocates a new page in the given file and loads it into the buffer pool.
+ *
+ * @param file   Pointer to the file in which the page is to be allocated.
+ * @param pageNo Reference to an integer that will be set to the newly allocated page number.
+ * @param page   Reference to a pointer that will be set to the allocated page in the buffer pool.
+ *
+ * @return OK if the page was successfully allocated and loaded; otherwise, returns an appropriate error status.
+ */
+const Status BufMgr::allocPage(File* file, int& pageNo, Page*& page)
 {
+    Status status = file->allocatePage(pageNo);
+    if (status != OK)
+        return status;
+
+    int frame;
+    status = allocBuf(frame);
+    if (status != OK)
+        return status;
+
+    status = hashTable->insert(file, pageNo, frame);
+    if (status != OK) {
+        bufTable[frame].Clear();
+        return status;
+    }
+    bufTable[frame].Set(file, pageNo);
+    page = &bufPool[frame];
+    return OK;
 }
 
 const Status BufMgr::disposePage(File *file, const int pageNo)
