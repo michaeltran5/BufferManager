@@ -85,54 +85,37 @@ BufMgr::~BufMgr()
  */
 const Status BufMgr::allocBuf(int &frame)
 {
-    int totalChecked = 0;
-
-    while (true)
+    int checked = 0;
+    while (checked++ < numBufs * 2)
     {
-        if (totalChecked >= numBufs * 2)
-        {
-            return BUFFEREXCEEDED;
-        }
-
         advanceClock();
         BufDesc *curBuf = &bufTable[clockHand];
-        totalChecked++;
-
-        if (!curBuf->valid)
-        {
+        
+        if (!curBuf->valid) {
             frame = clockHand;
+            curBuf->Clear();
             return OK;
         }
-
-        if (curBuf->refbit)
-        {
+        
+        if (curBuf->refbit) {
             curBuf->refbit = false;
             continue;
         }
-
+        
         if (curBuf->pinCnt > 0)
-        {
             continue;
-        }
-
-        if (curBuf->dirty)
-        {
-            Status writeStatus = curBuf->file->writePage(curBuf->pageNo, &bufPool[clockHand]);
-            if (writeStatus != OK)
-            {
-                return writeStatus;
-            }
-        }
-
-        Status removeStatus = hashTable->remove(curBuf->file, curBuf->pageNo);
-        if (removeStatus != OK)
-        {
-            return removeStatus;
-        }
-
+            
+        if (curBuf->dirty && curBuf->file->writePage(curBuf->pageNo, &bufPool[clockHand]) != OK)
+            return UNIXERR;
+            
+        if (curBuf->valid && hashTable->remove(curBuf->file, curBuf->pageNo) != OK)
+            return HASHTBLERROR;
+            
         frame = clockHand;
+        curBuf->Clear();
         return OK;
     }
+    return BUFFEREXCEEDED;
 }
 
 /**
