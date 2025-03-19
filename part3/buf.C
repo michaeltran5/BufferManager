@@ -3,9 +3,9 @@
  * Author: Shrey Katyal
  * ID: 9086052256
  * Author: Hassan Murayr
- * ID: 
+ * ID:
  * Author: Michael Tran
- * ID: 
+ * ID: 9083087123
  * Description: Implementation of the BufMgr class, and Minirel Buffer Management system
  */
 #include <memory.h>
@@ -77,27 +77,63 @@ BufMgr::~BufMgr()
     delete[] bufPool;
 }
 
-// Michael
+/**
+ * Allocates a buffer frame using the clock replacement policy.
+ *
+ * @param frame -The frame number allocated
+ * @return -  Status OK if successful or BUFFEREXCEEDED if all buffer frames are pinned
+ */
 const Status BufMgr::allocBuf(int &frame)
 {
-    int i;
-    for (i = 0; i < numBufs; i++)
+    int totalChecked = 0;
+
+    while (true)
     {
-        if (bufTable[clockHand].refbit == 0)
+        if (totalChecked >= numBufs * 2)
+        {
+            return BUFFEREXCEEDED;
+        }
+
+        advanceClock();
+        BufDesc *curBuf = &bufTable[clockHand];
+        totalChecked++;
+
+        if (!curBuf->valid)
         {
             frame = clockHand;
-            clockHand = (clockHand + 1) % numBufs;
             return OK;
         }
-        else
-        {
-            bufTable[clockHand].refbit = 0;
-            clockHand = (clockHand + 1) % numBufs;
-        }
-    }
-    return BUFFEREXCEEDED;
-}
 
+        if (curBuf->refbit)
+        {
+            curBuf->refbit = false;
+            continue;
+        }
+
+        if (curBuf->pinCnt > 0)
+        {
+            continue;
+        }
+
+        if (curBuf->dirty)
+        {
+            Status writeStatus = curBuf->file->writePage(curBuf->pageNo, &bufPool[clockHand]);
+            if (writeStatus != OK)
+            {
+                return writeStatus;
+            }
+        }
+
+        Status removeStatus = hashTable->remove(curBuf->file, curBuf->pageNo);
+        if (removeStatus != OK)
+        {
+            return removeStatus;
+        }
+
+        frame = clockHand;
+        return OK;
+    }
+}
 
 /**
  * Reads a page from the given file and puts it in the buffer pool.
@@ -110,11 +146,12 @@ const Status BufMgr::allocBuf(int &frame)
  * @param PageNo The number of the page to read.
  * @param page A pointer to the page in the buffer pool.
  * @return Returns OK if no errors occurred, UNIXERR if a Unix error occurred,
- *  BUFFEREXCEEDED if all buffer frames are pinned, HASHTBLERROR if a hash 
+ *  BUFFEREXCEEDED if all buffer frames are pinned, HASHTBLERROR if a hash
  *  table error occurred.
  */
 const Status BufMgr::readPage(File *file, const int PageNo, Page *&page)
 {
+    
     int framePointer = 0;
     Status pageStatus = hashTable->lookup(file, PageNo, framePointer);
 
@@ -150,8 +187,15 @@ const Status BufMgr::readPage(File *file, const int PageNo, Page *&page)
     return pageStatus;
 }
 
-// Michael
-const Status BufMgr::unPinPage(File *file, const int PageNo,
+/**
+ * Decrements the pin count of a page in the buffer pool.
+ *
+ * @param  - file    The file containing the page
+ * @param  - PageNo  The page number within the file
+ * @param  - dirty   If true, the page is marked as dirty, indicating it has been modified
+ * @return  - Status OK if successful, HASHNOTFOUND if the page isn't in the buffer pool,
+ *         PAGENOTPINNED if the page is found but has a pin count of 0
+ */const Status BufMgr::unPinPage(File *file, const int PageNo,
                                const bool dirty)
 {
     int framePointer = 0;
