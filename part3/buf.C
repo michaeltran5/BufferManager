@@ -67,14 +67,33 @@ BufMgr::~BufMgr()
     delete[] bufPool;
 }
 
+// Michael
 const Status BufMgr::allocBuf(int &frame)
 {
+    int i;
+    for (i = 0; i < numBufs; i++)
+    {
+        if (bufTable[clockHand].refbit == 0)
+        {
+            frame = clockHand;
+            clockHand = (clockHand + 1) % numBufs;
+            return OK;
+        }
+        else
+        {
+            bufTable[clockHand].refbit = 0;
+            clockHand = (clockHand + 1) % numBufs;
+        }
+    }
+    return BUFFEREXCEEDED;
 }
 
+// Shrey
 const Status BufMgr::readPage(File *file, const int PageNo, Page *&page)
 {
 }
 
+// Michael
 const Status BufMgr::unPinPage(File *file, const int PageNo,
                                const bool dirty)
 {
@@ -97,6 +116,7 @@ const Status BufMgr::unPinPage(File *file, const int PageNo,
     return PAGENOTPINNED;
 }
 
+// Hassan
 const Status BufMgr::allocPage(File *file, int &pageNo, Page *&page)
 {
 }
